@@ -63,6 +63,20 @@ cp ~/research-archive/skill/config.example.md ~/research-archive/skill/config.lo
 
 笔记模板见 [`skill/note-template.md`](skill/note-template.md)，示例见 [`examples/`](examples/)。
 
+## 界面（可选）
+
+`app/` 是一个只读的本地网页，用来浏览和筛选研究库：卡片网格、统计、标签筛选、搜索、笔记详情（渲染 markdown）、项目画像页（并显示哪些笔记提到了该项目）。技术栈：React 19、Vite、Tailwind 4。
+
+```bash
+cd app
+npm install
+npm run dev        # 打开 http://127.0.0.1:5174
+```
+
+- 库根读取顺序：环境变量 `RESEARCH_DIR` → `skill/config.local.md` 里的「库根」→ `~/research`。
+- 只监听 `127.0.0.1`，接口只有 GET，读取范围限定在库根下的来源目录，不会上传任何数据。
+- 目前只读；归档新条目仍然通过对话里的 skill 完成。
+
 ## 隐私
 
 - 研究库里的笔记和项目画像是你的私有数据，**不要推到公开仓库**。本仓库的 `.gitignore` 只忽略 `config.local.md`，库根建议放在仓库之外。

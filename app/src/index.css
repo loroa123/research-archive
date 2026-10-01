@@ -1,0 +1,76 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+
+/* 设计令牌：浅色为默认，跟随系统切深色 */
+:root {
+  --bg: #ffffff;
+  --bg-muted: #f8f8fa;
+  --fg: #16161d;
+  --fg-muted: #6b6b7a;
+  --border: #e6e6ec;
+  --card: #ffffff;
+  --accent: #4f46e5;
+  --accent-soft: #eef0ff;
+  --ring: rgba(79, 70, 229, 0.25);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101015;
+    --bg-muted: #17171e;
+    --fg: #ececf2;
+    --fg-muted: #9a9aab;
+    --border: #272733;
+    --card: #14141b;
+    --accent: #8b87ff;
+    --accent-soft: #23234a;
+    --ring: rgba(139, 135, 255, 0.3);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-muted: var(--bg-muted);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-line: var(--border);
+  --color-card: var(--card);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 笔记正文的 markdown 排版 */
+.prose-note {
+  line-height: 1.75;
+  font-size: 15px;
+}
+.prose-note h1 { font-size: 1.6rem; font-weight: 700; margin: 0 0 1rem; }
+.prose-note h2 { font-size: 1.15rem; font-weight: 650; margin: 2rem 0 0.6rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border); }
+.prose-note h3 { font-size: 1rem; font-weight: 650; margin: 1.4rem 0 0.4rem; }
+.prose-note p { margin: 0.6rem 0; }
+.prose-note ul { list-style: disc; padding-left: 1.4rem; margin: 0.6rem 0; }
+.prose-note ol { list-style: decimal; padding-left: 1.4rem; margin: 0.6rem 0; }
+.prose-note li { margin: 0.25rem 0; }
+.prose-note blockquote { border-left: 3px solid var(--accent); background: var(--accent-soft); margin: 0.8rem 0; padding: 0.6rem 1rem; border-radius: 0 8px 8px 0; }
+.prose-note blockquote p { margin: 0; }
+.prose-note code { background: var(--bg-muted); border: 1px solid var(--border); padding: 0.1rem 0.35rem; border-radius: 5px; font-size: 0.88em; }
+.prose-note pre { background: var(--bg-muted); border: 1px solid var(--border); padding: 0.9rem 1rem; border-radius: 10px; overflow-x: auto; }
+.prose-note pre code { border: 0; padding: 0; background: transparent; }
+.prose-note a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.prose-note table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.92em; display: block; overflow-x: auto; }
+.prose-note th, .prose-note td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; }
+.prose-note th { background: var(--bg-muted); font-weight: 600; }
+.prose-note hr { border: 0; border-top: 1px solid var(--border); margin: 1.5rem 0; }
