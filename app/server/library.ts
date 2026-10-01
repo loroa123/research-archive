@@ -69,7 +69,8 @@ export function listNotes(root: string): NoteMeta[] {
     const full = path.join(root, dir)
     let files: string[] = []
     try {
-      files = fs.readdirSync(full).filter((f) => f.endsWith('.md'))
+      // 跳过点文件（编辑器临时文件、隐藏文件）：它们的 id 也不会被读写接口接受，列出来只会产生点不开的卡片
+      files = fs.readdirSync(full).filter((f) => f.endsWith('.md') && !f.startsWith('.'))
     } catch {
       continue
     }
@@ -103,11 +104,17 @@ export function listNotes(root: string): NoteMeta[] {
   return out.sort((a, b) => (b.captured || '').localeCompare(a.captured || '') || a.id.localeCompare(b.id))
 }
 
-/** id 必须形如 <来源目录>/<文件名>，防止路径穿越 */
+/** 笔记 id 必须形如 <来源目录>/<文件名>：目录在白名单内，文件名不含路径分隔符、控制字符，不以点开头 */
+function parseNoteId(id: string): [string, string] | null {
+  const m = id.match(/^([a-z]+)\/([^/\\\u0000-\u001f]{1,200})$/)
+  if (!m || m[2].startsWith('.') || !(SOURCE_DIRS as readonly string[]).includes(m[1])) return null
+  return [m[1], m[2]]
+}
+
 export function readNote(root: string, id: string) {
-  const m = id.match(/^([a-z]+)\/([^/\\]+)$/)
-  if (!m || !(SOURCE_DIRS as readonly string[]).includes(m[1])) return null
-  const file = path.resolve(root, m[1], `${m[2]}.md`)
+  const parsed = parseNoteId(id)
+  if (!parsed) return null
+  const file = path.resolve(root, parsed[0], `${parsed[1]}.md`)
   if (!file.startsWith(path.resolve(root) + path.sep)) return null
   try {
     const raw = fs.readFileSync(file, 'utf-8')
@@ -218,11 +225,20 @@ export function listCategories(root: string): { categories: CategoryInfo[]; unca
   return { categories, uncategorized: notes.filter((n) => !n.category).length, total: notes.length }
 }
 
+/** 控制字符、不可见格式字符（零宽、双向覆盖等）、行/段分隔符、孤立代理项 */
+const BAD_NAME_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}]/u
+/** 前端用这个值表示「未分类」筛选，不能被分类名占用 */
+const RESERVED_NAMES = new Set(['__none__'])
+export const MAX_CATEGORIES = 100
+
 function cleanName(raw: unknown): string {
-  const name = typeof raw === 'string' ? raw.trim() : ''
+  if (typeof raw !== 'string') throw new HttpError(400, '分类名必须是文字')
+  // NFC 归一化：避免 é 的两种 Unicode 写法造成肉眼无法区分的重复分类
+  const name = raw.normalize('NFC').trim()
   if (!name) throw new HttpError(400, '分类名不能为空')
   if (name.length > 30) throw new HttpError(400, '分类名最长 30 个字符')
-  if (/[\u0000-\u001f\u007f]/.test(name)) throw new HttpError(400, '分类名不能包含控制字符')
+  if (BAD_NAME_CHARS.test(name)) throw new HttpError(400, '分类名不能包含换行、控制字符或不可见字符')
+  if (RESERVED_NAMES.has(name)) throw new HttpError(400, '这个名字是系统保留的')
   return name
 }
 
@@ -232,9 +248,14 @@ function cleanColor(raw: unknown, fallback = 'sky'): string {
   throw new HttpError(400, '不支持的颜色')
 }
 
-/** YAML 标量：普通文字原样写，含特殊字符或像布尔/数字的用双引号 */
+/**
+ * YAML 标量：只有「以字母开头、只含字母数字和少量安全符号、且不是 YAML 保留词」的才原样写，
+ * 其余一律加双引号。以字母开头就排除了数字、十六进制/八进制/科学计数、日期时间、.inf/.nan 等
+ * 会被解析成非字符串的写法；保留词包括 YAML 1.1 的 y/n/yes/no/on/off，兼容不同的解析器。
+ */
+const YAML_RESERVED = /^(y|n|yes|no|on|off|true|false|null|nil|none)$/i
 function yamlScalar(v: string): string {
-  const plain = /^[\p{L}\p{N}][\p{L}\p{N} _\-/.&]*$/u.test(v) && !/^(true|false|yes|no|null|on|off|~|[\d.]+)$/i.test(v) && v === v.trim()
+  const plain = /^\p{L}[\p{L}\p{N} _\-/.&]*$/u.test(v) && !YAML_RESERVED.test(v) && v === v.trim()
   return plain ? v : JSON.stringify(v)
 }
 
@@ -257,9 +278,9 @@ export function editFrontmatterLine(text: string, key: string, value: string | n
 }
 
 function noteFile(root: string, id: string): string {
-  const m = id.match(/^([a-z]+)\/([^/\\]+)$/)
-  if (!m || !(SOURCE_DIRS as readonly string[]).includes(m[1])) throw new HttpError(400, '无效的笔记 id')
-  const file = path.resolve(root, m[1], `${m[2]}.md`)
+  const parsed = parseNoteId(id)
+  if (!parsed) throw new HttpError(400, '无效的笔记 id')
+  const file = path.resolve(root, parsed[0], `${parsed[1]}.md`)
   if (!file.startsWith(path.resolve(root) + path.sep)) throw new HttpError(400, '无效的笔记 id')
   if (!fs.existsSync(file)) throw new HttpError(404, '笔记不存在')
   return file
@@ -274,6 +295,7 @@ export function setNoteCategory(root: string, id: string, category: string | nul
 export function createCategory(root: string, body: any) {
   const name = cleanName(body?.name)
   const defs = readCategoryDefs(root)
+  if (defs.length >= MAX_CATEGORIES) throw new HttpError(400, `分类最多 ${MAX_CATEGORIES} 个`)
   if (defs.some((d) => d.name.toLowerCase() === name.toLowerCase())) throw new HttpError(409, '已有同名分类')
   const color = cleanColor(body?.color, CATEGORY_COLORS[defs.length % (CATEGORY_COLORS.length - 1)])
   writeCategoryDefs(root, [...defs, { name, color }])

@@ -56,7 +56,20 @@ export default function DetailPage() {
             </div>
           )}
           <article className="prose-note mt-6">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.body}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                // 不自动加载外部图片：避免每次打开笔记都向外部站点暴露访问；链接另开标签并断开 opener
+                img: ({ alt }) => <span className="text-fg-muted">[图片：{alt || '未命名'}]</span>,
+                a: ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noreferrer noopener">
+                    {children}
+                  </a>
+                ),
+              }}
+            >
+              {data.body}
+            </ReactMarkdown>
           </article>
         </>
       )}

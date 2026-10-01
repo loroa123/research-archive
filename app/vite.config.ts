@@ -50,6 +50,7 @@ function readBody(req: any): Promise<any> {
  *   2. 写请求必须带自定义头 x-ra-write: 1（跨站请求带自定义头会触发预检，而我们不开放 CORS）
  *   3. 写请求若带 Origin，必须与 Host 同源
  *   4. 写请求必须是 application/json
+ *   5. 浏览器自带的 Sec-Fetch-Site 若存在，必须是 same-origin 或 none（直接输入网址）
  */
 function libraryApi(): Plugin {
   const handler = async (req: any, res: any, next: () => void) => {
@@ -81,7 +82,17 @@ function libraryApi(): Plugin {
       // ── 写操作 ──
       if (req.headers['x-ra-write'] !== '1') throw new HttpError(403, '缺少写入标记')
       const origin = req.headers.origin
-      if (origin && new URL(String(origin)).host !== host) throw new HttpError(403, '跨站请求被拒绝')
+      if (origin !== undefined) {
+        let originHost = ''
+        try {
+          originHost = new URL(String(origin)).host
+        } catch {
+          /* Origin: null（沙箱 iframe、file://）等无法解析的值，按跨站处理 */
+        }
+        if (originHost !== host) throw new HttpError(403, '跨站请求被拒绝')
+      }
+      const site = req.headers['sec-fetch-site']
+      if (site !== undefined && site !== 'same-origin' && site !== 'none') throw new HttpError(403, '跨站请求被拒绝')
       if (!String(req.headers['content-type'] || '').startsWith('application/json')) {
         throw new HttpError(415, '需要 application/json')
       }

@@ -152,10 +152,28 @@ export function StatCard({ icon, label, value, hint }: { icon: React.ReactNode; 
   )
 }
 
+/** 只放行 http/https。笔记 frontmatter 里的 url 不可信，javascript:、data: 等协议点击会执行脚本 */
+export function safeHttpUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null
+  } catch {
+    return null
+  }
+}
+
 export function ExternalLinkBtn({ href, children }: { href: string; children: React.ReactNode }) {
+  const safe = safeHttpUrl(href)
+  if (!safe) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-line px-3 py-1.5 text-sm text-fg-muted" title={href}>
+        <ExternalLink size={14} /> 链接协议不受支持，已禁用
+      </span>
+    )
+  }
   return (
     <a
-      href={href}
+      href={safe}
       target="_blank"
       rel="noreferrer noopener"
       className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-bg-muted"
