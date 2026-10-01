@@ -17,6 +17,7 @@ export interface NoteMeta {
   tags: string[]
   status: string
   verdict: string
+  category: string
   summary: string
   mtime: number
 }
@@ -89,6 +90,7 @@ export function listNotes(root: string): NoteMeta[] {
           tags,
           status: str(data.status) || 'quick',
           verdict: str(data.verdict),
+          category: str(data.category),
           summary: summaryOf(content),
           mtime: fs.statSync(file).mtimeMs,
         })
@@ -97,7 +99,8 @@ export function listNotes(root: string): NoteMeta[] {
       }
     }
   }
-  return out.sort((a, b) => (b.captured || '').localeCompare(a.captured || '') || b.mtime - a.mtime)
+  // 同一天按 id 排，不按修改时间——否则每次改分类卡片都会换位置
+  return out.sort((a, b) => (b.captured || '').localeCompare(a.captured || '') || a.id.localeCompare(b.id))
 }
 
 /** id 必须形如 <来源目录>/<文件名>，防止路径穿越 */
@@ -151,4 +154,157 @@ export function listProjects(root: string, notes: NoteMeta[]): Project[] {
     projects.push({ name, title: heading, fields, related })
   }
   return projects
+}
+
+
+// ───────────────────────── 分类（可写）─────────────────────────
+export const CATEGORY_COLORS = ['sky', 'violet', 'orange', 'rose', 'teal', 'amber', 'emerald', 'zinc'] as const
+
+export interface CategoryDef {
+  name: string
+  color: string
+}
+export interface CategoryInfo extends CategoryDef {
+  count: number
+  registered: boolean // false 表示只在笔记里出现、不在 categories.json 里
+}
+
+export class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+const categoriesFile = (root: string) => path.join(root, '_context', 'categories.json')
+
+function readCategoryDefs(root: string): CategoryDef[] {
+  try {
+    const j = JSON.parse(fs.readFileSync(categoriesFile(root), 'utf-8'))
+    return (Array.isArray(j.categories) ? j.categories : [])
+      .filter((c: any) => c && typeof c.name === 'string' && c.name.trim())
+      .map((c: any) => ({
+        name: c.name.trim(),
+        color: (CATEGORY_COLORS as readonly string[]).includes(c.color) ? c.color : 'sky',
+      }))
+  } catch {
+    return []
+  }
+}
+
+/** 原子写：先写临时文件再重命名，避免写到一半崩掉留下半个文件 */
+function atomicWrite(file: string, text: string) {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const tmp = `${file}.tmp-ra-${process.pid}`
+  fs.writeFileSync(tmp, text, 'utf-8')
+  fs.renameSync(tmp, file)
+}
+
+function writeCategoryDefs(root: string, defs: CategoryDef[]) {
+  atomicWrite(categoriesFile(root), JSON.stringify({ categories: defs }, null, 2) + '\n')
+}
+
+export function listCategories(root: string): { categories: CategoryInfo[]; uncategorized: number; total: number } {
+  const notes = listNotes(root)
+  const defs = readCategoryDefs(root)
+  const counts = new Map<string, number>()
+  for (const n of notes) if (n.category) counts.set(n.category, (counts.get(n.category) || 0) + 1)
+  const categories: CategoryInfo[] = defs.map((d) => ({ ...d, count: counts.get(d.name) || 0, registered: true }))
+  for (const [name, count] of counts) {
+    if (!defs.some((d) => d.name === name)) categories.push({ name, color: 'zinc', count, registered: false })
+  }
+  return { categories, uncategorized: notes.filter((n) => !n.category).length, total: notes.length }
+}
+
+function cleanName(raw: unknown): string {
+  const name = typeof raw === 'string' ? raw.trim() : ''
+  if (!name) throw new HttpError(400, '分类名不能为空')
+  if (name.length > 30) throw new HttpError(400, '分类名最长 30 个字符')
+  if (/[\u0000-\u001f\u007f]/.test(name)) throw new HttpError(400, '分类名不能包含控制字符')
+  return name
+}
+
+function cleanColor(raw: unknown, fallback = 'sky'): string {
+  if (raw == null || raw === '') return fallback
+  if (typeof raw === 'string' && (CATEGORY_COLORS as readonly string[]).includes(raw)) return raw
+  throw new HttpError(400, '不支持的颜色')
+}
+
+/** YAML 标量：普通文字原样写，含特殊字符或像布尔/数字的用双引号 */
+function yamlScalar(v: string): string {
+  const plain = /^[\p{L}\p{N}][\p{L}\p{N} _\-/.&]*$/u.test(v) && !/^(true|false|yes|no|null|on|off|~|[\d.]+)$/i.test(v) && v === v.trim()
+  return plain ? v : JSON.stringify(v)
+}
+
+/** 只改 frontmatter 里 key 那一行（没有就插到 verdict 后或块末尾），不重排其他内容和注释 */
+export function editFrontmatterLine(text: string, key: string, value: string | null): string {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  if (!m) throw new HttpError(422, '笔记没有 frontmatter，无法写入')
+  const eol = text.includes('\r\n') ? '\r\n' : '\n'
+  const lines = m[1].split(/\r?\n/)
+  const idx = lines.findIndex((l) => new RegExp(`^${key}\\s*:`).test(l))
+  const rendered = value === null ? null : `${key}: ${yamlScalar(value)}`
+  if (idx >= 0) {
+    if (rendered === null) lines.splice(idx, 1)
+    else lines[idx] = rendered
+  } else if (rendered !== null) {
+    const vi = lines.findIndex((l) => /^verdict\s*:/.test(l))
+    lines.splice(vi >= 0 ? vi + 1 : lines.length, 0, rendered)
+  }
+  return text.replace(m[0], () => `---${eol}${lines.join(eol)}${eol}---`)
+}
+
+function noteFile(root: string, id: string): string {
+  const m = id.match(/^([a-z]+)\/([^/\\]+)$/)
+  if (!m || !(SOURCE_DIRS as readonly string[]).includes(m[1])) throw new HttpError(400, '无效的笔记 id')
+  const file = path.resolve(root, m[1], `${m[2]}.md`)
+  if (!file.startsWith(path.resolve(root) + path.sep)) throw new HttpError(400, '无效的笔记 id')
+  if (!fs.existsSync(file)) throw new HttpError(404, '笔记不存在')
+  return file
+}
+
+export function setNoteCategory(root: string, id: string, category: string | null) {
+  const file = noteFile(root, id)
+  const value = category === null || category === '' ? null : cleanName(category)
+  atomicWrite(file, editFrontmatterLine(fs.readFileSync(file, 'utf-8'), 'category', value))
+}
+
+export function createCategory(root: string, body: any) {
+  const name = cleanName(body?.name)
+  const defs = readCategoryDefs(root)
+  if (defs.some((d) => d.name.toLowerCase() === name.toLowerCase())) throw new HttpError(409, '已有同名分类')
+  const color = cleanColor(body?.color, CATEGORY_COLORS[defs.length % (CATEGORY_COLORS.length - 1)])
+  writeCategoryDefs(root, [...defs, { name, color }])
+}
+
+/** 改名（同步改所有相关笔记）和/或改颜色 */
+export function updateCategory(root: string, body: any): { renamedNotes: number } {
+  const from = cleanName(body?.name)
+  const defs = readCategoryDefs(root)
+  const notes = listNotes(root).filter((n) => n.category === from)
+  const existing = defs.find((d) => d.name === from)
+  if (!existing && notes.length === 0) throw new HttpError(404, '分类不存在')
+  const to = body?.newName == null ? from : cleanName(body.newName)
+  if (to !== from && defs.concat(listCategories(root).categories).some((d) => d.name.toLowerCase() === to.toLowerCase() && d.name !== from)) {
+    throw new HttpError(409, '已有同名分类')
+  }
+  const color = cleanColor(body?.color, existing?.color || 'zinc')
+  // 先改笔记，再写清单：中途失败时清单仍是旧名，笔记里的新名会作为「未登记」分类显示，不会丢
+  if (to !== from) for (const n of notes) setNoteCategory(root, n.id, to)
+  const next = existing ? defs.map((d) => (d.name === from ? { name: to, color } : d)) : [...defs, { name: to, color }]
+  writeCategoryDefs(root, next)
+  return { renamedNotes: to !== from ? notes.length : 0 }
+}
+
+/** 删除分类：清掉相关笔记的 category 行（笔记正文不动） */
+export function deleteCategory(root: string, name: string): { clearedNotes: number } {
+  const target = cleanName(name)
+  const defs = readCategoryDefs(root)
+  const notes = listNotes(root).filter((n) => n.category === target)
+  if (!defs.some((d) => d.name === target) && notes.length === 0) throw new HttpError(404, '分类不存在')
+  for (const n of notes) setNoteCategory(root, n.id, null)
+  writeCategoryDefs(root, defs.filter((d) => d.name !== target))
+  return { clearedNotes: notes.length }
 }

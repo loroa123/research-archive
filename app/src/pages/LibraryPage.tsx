@@ -1,13 +1,22 @@
 import { useMemo, useState } from 'react'
-import { BookOpen, Search, Layers, Microscope, Gauge } from 'lucide-react'
-import { useApi, SOURCE_LABEL, VERDICT_LABEL, type NoteMeta } from '../lib/api'
+import { BookOpen, Search, Layers, Microscope, Gauge, Settings2 } from 'lucide-react'
+import { useApi, SOURCE_LABEL, VERDICT_LABEL, CATEGORY_COLORS, type NoteMeta, type CategoriesResp } from '../lib/api'
 import { NoteCard, StatCard, TagPill, Empty } from '../components/ui'
+import CategoryManager from '../components/CategoryManager'
 
 const selectCls =
   'h-10 rounded-lg border border-line bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--ring)]'
 
 export default function LibraryPage() {
-  const { data, error, loading } = useApi<{ root: string; notes: NoteMeta[] }>('/api/notes')
+  const { data, error, loading, reload: reloadNotes } = useApi<{ root: string; notes: NoteMeta[] }>('/api/notes')
+  const { data: catData, reload: reloadCats } = useApi<CategoriesResp>('/api/categories')
+  const [category, setCategory] = useState('') // '' 全部；'__none__' 未分类；其余为分类名
+  const [managing, setManaging] = useState(false)
+  const reloadAll = () => {
+    reloadNotes()
+    reloadCats()
+  }
+  const categories = catData?.categories ?? []
   const [q, setQ] = useState('')
   const [source, setSource] = useState('')
   const [verdict, setVerdict] = useState('')
@@ -25,13 +34,14 @@ export default function LibraryPage() {
     const k = q.trim().toLowerCase()
     return notes.filter(
       (n) =>
+        (!category || (category === '__none__' ? !n.category : n.category === category)) &&
         (!source || n.source === source) &&
         (!verdict || n.verdict === verdict) &&
         (!status || n.status === status) &&
         (!tag || n.tags.includes(tag)) &&
         (!k || `${n.title} ${n.summary} ${n.author} ${n.tags.join(' ')}`.toLowerCase().includes(k)),
     )
-  }, [notes, q, source, verdict, status, tag])
+  }, [notes, q, category, source, verdict, status, tag])
 
   const sources = [...new Set(notes.map((n) => n.source))]
   const quickCount = notes.filter((n) => n.status !== 'deep').length
@@ -59,6 +69,27 @@ export default function LibraryPage() {
               value={<span className="text-emerald-600">{notes.filter((n) => n.verdict === 'use' || n.verdict === 'reference').length}</span>}
               hint="verdict 为直接用或参考"
             />
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-2" role="tablist" aria-label="分类">
+            <CatTab active={category === ''} onClick={() => setCategory('')} label="全部" count={notes.length} />
+            <CatTab active={category === '__none__'} onClick={() => setCategory('__none__')} label="未分类" count={catData?.uncategorized ?? 0} />
+            {categories.map((c) => (
+              <CatTab
+                key={c.name}
+                active={category === c.name}
+                onClick={() => setCategory(c.name)}
+                label={c.name}
+                count={c.count}
+                dot={(CATEGORY_COLORS[c.color] || CATEGORY_COLORS.zinc).dot}
+              />
+            ))}
+            <button
+              onClick={() => setManaging(true)}
+              className="ml-1 inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-line px-3 text-sm text-fg-muted hover:border-accent hover:text-accent"
+            >
+              <Settings2 size={14} /> 管理分类
+            </button>
           </div>
 
           {hotTags.length > 0 && (
@@ -101,10 +132,10 @@ export default function LibraryPage() {
 
           <div className="mt-3 text-sm text-fg-muted">
             共 <b className="text-fg">{filtered.length}</b> 条
-            {(q || source || verdict || status || tag) && (
+            {(q || source || verdict || status || tag || category) && (
               <button
                 className="ml-3 text-accent hover:underline"
-                onClick={() => { setQ(''); setSource(''); setVerdict(''); setStatus(''); setTag('') }}
+                onClick={() => { setQ(''); setSource(''); setVerdict(''); setStatus(''); setTag(''); setCategory('') }}
               >
                 清除筛选
               </button>
@@ -116,12 +147,40 @@ export default function LibraryPage() {
           ) : (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.map((n) => (
-                <NoteCard key={n.id} note={n} />
+                <NoteCard key={n.id} note={n} categories={categories} onChanged={reloadAll} />
               ))}
             </div>
           )}
         </>
       )}
+      {managing && (
+        <CategoryManager
+          categories={categories}
+          onClose={() => setManaging(false)}
+          onChanged={() => {
+            reloadAll()
+            // 当前选中的分类被改名或删除后，回到「全部」
+            setCategory('')
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function CatTab({ active, onClick, label, count, dot }: { active: boolean; onClick: () => void; label: string; count: number; dot?: string }) {
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition ${
+        active ? 'border-accent bg-accent-soft font-medium text-accent' : 'border-line hover:bg-bg-muted'
+      }`}
+    >
+      {dot && <span className={`h-2 w-2 rounded-full ${dot}`} />}
+      {label}
+      <span className={`text-xs ${active ? 'text-accent' : 'text-fg-muted'}`}>{count}</span>
+    </button>
   )
 }

@@ -34,7 +34,7 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-line px-5 py-3 text-xs text-fg-muted">本地只读 · 数据不上传</div>
+        <div className="border-t border-line px-5 py-3 text-xs text-fg-muted">仅本机访问 · 数据不上传</div>
       </aside>
 
       <main className="min-w-0 flex-1 overflow-y-auto">

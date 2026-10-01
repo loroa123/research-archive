@@ -2,13 +2,14 @@ import { Link, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ArrowLeft } from 'lucide-react'
-import { useApi, SOURCE_LABEL, type NoteDetail } from '../lib/api'
-import { TagPill, VerdictBadge, StatusBadge, ExternalLinkBtn, Empty } from '../components/ui'
+import { useApi, SOURCE_LABEL, type NoteDetail, type CategoriesResp } from '../lib/api'
+import { TagPill, VerdictBadge, StatusBadge, ExternalLinkBtn, Empty, CategorySelect } from '../components/ui'
 
 export default function DetailPage() {
   const { source = '', name = '' } = useParams()
   const id = `${source}/${name}`
-  const { data, error, loading } = useApi<NoteDetail>(`/api/note?id=${encodeURIComponent(id)}`)
+  const { data, error, loading, reload } = useApi<NoteDetail>(`/api/note?id=${encodeURIComponent(id)}`)
+  const { data: catData, reload: reloadCats } = useApi<CategoriesResp>('/api/categories')
   const m = data?.meta
 
   return (
@@ -37,7 +38,21 @@ export default function DetailPage() {
                   {m.tags.map((t) => <TagPill key={t} tag={t} />)}
                 </div>
               )}
-              {m.url && <div className="mt-4"><ExternalLinkBtn href={m.url}>打开原链接</ExternalLinkBtn></div>}
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                {m.url && <ExternalLinkBtn href={m.url}>打开原链接</ExternalLinkBtn>}
+                <span className="flex items-center gap-2 text-sm text-fg-muted">
+                  分类
+                  <CategorySelect
+                    note={m}
+                    categories={catData?.categories ?? []}
+                    onChanged={() => {
+                      reload()
+                      reloadCats()
+                    }}
+                    className="h-9 w-48 text-sm text-fg"
+                  />
+                </span>
+              </div>
             </div>
           )}
           <article className="prose-note mt-6">

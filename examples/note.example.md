@@ -8,6 +8,7 @@ published:
 tags: [evaluation, llm-as-judge]
 status: quick
 verdict: learn
+category: agent evaluation
 ---
 
 # demo-judge

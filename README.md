@@ -65,7 +65,9 @@ cp ~/research-archive/skill/config.example.md ~/research-archive/skill/config.lo
 
 ## 界面（可选）
 
-`app/` 是一个只读的本地网页，用来浏览和筛选研究库：卡片网格、统计、标签筛选、搜索、笔记详情（渲染 markdown）、项目画像页（并显示哪些笔记提到了该项目）。技术栈：React 19、Vite、Tailwind 4。
+`app/` 是一个本地网页，用来浏览、筛选和**分类**研究库：卡片网格、统计、标签筛选、搜索、笔记详情（渲染 markdown）、项目画像页（并显示哪些笔记提到了该项目）。技术栈：React 19、Vite、Tailwind 4。
+
+**自定义分类**：在页面里新增、改名、换颜色、删除分类，并把每条笔记归入一个分类（卡片上或详情页里直接选）。分类名写在笔记的 frontmatter（`category:`），分类清单存在 `<库根>/_context/categories.json`，所以不用界面也能读写。
 
 ```bash
 cd app
@@ -74,8 +76,11 @@ npm run dev        # 打开 http://127.0.0.1:5174
 ```
 
 - 库根读取顺序：环境变量 `RESEARCH_DIR` → `skill/config.local.md` 里的「库根」→ `~/research`。
-- 只监听 `127.0.0.1`，接口只有 GET，读取范围限定在库根下的来源目录，不会上传任何数据。
-- 目前只读；归档新条目仍然通过对话里的 skill 完成。
+- 只监听 `127.0.0.1`，不会上传任何数据。读取范围限定在库根下的来源目录。
+- **页面只会写两种东西**：`_context/categories.json`，以及笔记 frontmatter 里的 `category:` 一行（改动前后的差异只有这一行，其余内容不会被重排）。
+- 写接口有防护：只接受本机 Host、必须带自定义请求头、拒绝跨站 Origin、只收 JSON，请求体上限 10KB。网页上的恶意脚本无法借你的本机服务改笔记。
+- 删除分类前会提示影响几条笔记；删除只清除笔记里的 `category:` 行，不动正文。
+- 归档新条目仍然通过对话里的 skill 完成（页面不能调用 Claude）。
 
 ## 隐私
 

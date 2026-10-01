@@ -8,6 +8,7 @@ published:
 tags: []
 status: quick           # quick = 简单分析 | deep = 读过源码/全文
 verdict: reference      # use 直接用 | reference 参考 | learn 学习 | skip 跳过
+category:               # 自定义分类，取自 _context/categories.json；不确定就留空
 ---
 
 # 标题
