@@ -32,8 +32,30 @@ const noteFile = () => path.join(root, 'github', 'ex__a.md')
 before(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'ra-test-'))
   fs.mkdirSync(path.join(root, 'github'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'self-upload'), { recursive: true })
+  fs.mkdirSync(path.join(root, 'xhs'), { recursive: true })
   fs.mkdirSync(path.join(root, '_context'), { recursive: true })
+  fs.mkdirSync(path.join(root, '_tasks'), { recursive: true })
+  fs.mkdirSync(path.join(root, '_raw', 'self-upload', 'audio-test'), { recursive: true })
+  fs.mkdirSync(path.join(root, '_raw', 'xhs', 'note-test'), { recursive: true })
+  fs.mkdirSync(path.join(root, '_raw', 'xhs', 'video-test', 'keyframes'), { recursive: true })
   fs.writeFileSync(noteFile(), NOTE)
+  fs.writeFileSync(path.join(root, '_context', 'tasks.json'), JSON.stringify({ tasks: [{ id: 'sample-task', title: '示例短期任务', status: 'active', created: '2026-10-08', updated: '2026-10-08', summary: '整理一组公开研究资料' }] }))
+  fs.writeFileSync(path.join(root, '_tasks', 'sample-task.md'), '# 示例短期任务\n\n## 当前结论\n\n优先核对一手来源。\n')
+  fs.writeFileSync(path.join(root, 'github', 'task-example.md'), NOTE.replace('title: 示例', 'title: 任务参考').replace('verdict: learn', 'verdict: learn\ntask: sample-task'))
+  fs.writeFileSync(path.join(root, '_raw', 'self-upload', 'audio-test', 'meeting.json'), JSON.stringify({ duration: 12, speakers: [{ id: 's0', name: '甲' }], turns: [{ start: 1, end: 3, speaker: '甲', speakerId: 's0', text: '测试会谈' }] }))
+  fs.writeFileSync(path.join(root, '_raw', 'self-upload', 'audio-test', 'meeting.mp3'), Buffer.from('fake-mp3'))
+  fs.writeFileSync(path.join(root, 'self-upload', 'audio-test.md'), NOTE.replaceAll('source: github', 'source: self-upload').replaceAll('title: 示例', 'title: 本地音频实验').replace('verdict: learn', 'verdict: learn\nmeeting_transcript: _raw/self-upload/audio-test/meeting.json\nmeeting_audio: _raw/self-upload/audio-test/meeting.mp3'))
+  fs.writeFileSync(path.join(root, '_raw', 'xhs', 'note-test', 'image-01.webp'), Buffer.from('fake-webp'))
+  fs.writeFileSync(path.join(root, 'xhs', 'note-test.md'), NOTE.replaceAll('source: github', 'source: xhs').replaceAll('title: 示例', 'title: 小红书图文').replace('verdict: learn', 'verdict: learn\nxhs_image_dir: _raw/xhs/note-test'))
+  fs.writeFileSync(path.join(root, '_raw', 'xhs', 'video-test', 'video.mp4'), Buffer.from('fake-video-data'))
+  fs.writeFileSync(path.join(root, '_raw', 'xhs', 'video-test', 'original.mp4'), Buffer.from('fake-original-video'))
+  fs.writeFileSync(path.join(root, '_raw', 'xhs', 'video-test', 'corrected.srt'), '1\n00:00:01,000 --> 00:00:03,500\n复指数函数\n\n2\n00:00:04,000 --> 00:00:06,000\n傅里叶变换\n')
+  fs.writeFileSync(path.join(root, '_raw', 'xhs', 'video-test', 'comparison.json'), JSON.stringify({ audio_duration_seconds: 8, platform_cue_count: 2, platform_vs_local: { similarity: 0.93 }, platform_vs_qwen: { similarity: 0.98 }, local_vs_qwen: { similarity: 0.94 }, local_runtime_seconds: 5, qwen_runtime_seconds: 2, correction_count: 1, qwen_usage: { total_Tokens: 123 } }))
+  fs.writeFileSync(path.join(root, '_raw', 'xhs', 'video-test', 'keyframes', 'keyframe-001.jpg'), Buffer.from('fake-jpeg'))
+  fs.writeFileSync(path.join(root, '_raw', 'xhs', 'video-test', 'keyframes', 'manifest.json'), JSON.stringify({ scene_threshold: 0.22, max_gap_seconds: 45, frames: [{ file: 'keyframe-001.jpg', time_seconds: 2.5, reason: 'scene-change' }] }))
+  fs.writeFileSync(path.join(root, '_raw', 'xhs', 'video-test', 'diarization.json'), JSON.stringify({ model: 'test', turns: [{ start: 0, end: 3.8, speaker: 'SPEAKER_00' }, { start: 3.8, end: 8, speaker: 'SPEAKER_01' }] }))
+  fs.writeFileSync(path.join(root, 'xhs', 'video-test.md'), NOTE.replaceAll('source: github', 'source: xhs').replaceAll('title: 示例', 'title: 小红书视频').replace('verdict: learn', 'verdict: learn\ntype: video\nvideo_file: _raw/xhs/video-test/video.mp4\nvideo_original_file: _raw/xhs/video-test/original.mp4\nvideo_subtitle: _raw/xhs/video-test/corrected.srt\nvideo_diarization: _raw/xhs/video-test/diarization.json\nvideo_keyframe_dir: _raw/xhs/video-test/keyframes\nvideo_experiment: _raw/xhs/video-test/comparison.json'))
   process.env.RESEARCH_DIR = root
   server = await createServer({
     root: appDir,
@@ -62,7 +84,7 @@ function call(method, url, { headers = {}, body, raw } = {}) {
         res.on('end', () => {
           let json = null
           try { json = JSON.parse(data) } catch { /* 非 JSON */ }
-          resolve({ status: res.statusCode, json })
+          resolve({ status: res.statusCode, json, headers: res.headers })
         })
       },
     )
@@ -77,9 +99,126 @@ const notes = async () => (await call('GET', '/api/notes')).json.notes
 const cats = async () => (await call('GET', '/api/categories')).json
 
 test('读接口可用；伪造 Host（DNS rebinding）被拒绝', async () => {
-  assert.equal((await call('GET', '/api/notes')).status, 200)
+  const listed = await call('GET', '/api/notes')
+  assert.equal(listed.status, 200)
+  assert.ok(listed.json.notes.some((n) => n.id === 'self-upload/audio-test' && n.source === 'self-upload'))
+  const meetingNote = await call('GET', '/api/note?id=self-upload%2Faudio-test')
+  assert.equal(meetingNote.status, 200)
+  assert.equal(meetingNote.json.meeting.turns[0].text, '测试会谈')
+  const meetingAudio = await call('GET', '/api/meeting-audio?id=self-upload%2Faudio-test')
+  assert.equal(meetingAudio.status, 200)
+  assert.equal(meetingAudio.headers['content-type'], 'audio/mpeg')
+  const meetingRange = await call('GET', '/api/meeting-audio?id=self-upload%2Faudio-test', { headers: { range: 'bytes=2-5' } })
+  assert.equal(meetingRange.status, 206)
+  assert.equal(meetingRange.headers['content-range'], 'bytes 2-5/8')
+  assert.equal((await call('GET', '/api/meeting-audio?id=self-upload%2Faudio-test', { headers: { range: 'bytes=99-100' } })).status, 416)
+  assert.equal((await call('GET', '/api/meeting-audio?id=github%2Fex__a')).status, 404)
+  const xhsNote = await call('GET', '/api/note?id=xhs%2Fnote-test')
+  assert.equal(xhsNote.status, 200)
+  assert.equal(xhsNote.json.images[0].name, 'image-01.webp')
+  const xhsImage = await call('GET', '/api/note-image?id=xhs%2Fnote-test&index=0')
+  assert.equal(xhsImage.status, 200)
+  assert.equal(xhsImage.headers['content-type'], 'image/webp')
+  assert.equal((await call('GET', '/api/note-image?id=xhs%2Fnote-test&index=99')).status, 404)
+  assert.equal((await call('GET', '/api/note-image?id=github%2Fex__a&index=0')).status, 404)
+  const videoNote = await call('GET', '/api/note?id=xhs%2Fvideo-test')
+  assert.equal(videoNote.status, 200)
+  assert.equal(videoNote.json.video.cues[0].text, '复指数函数')
+  assert.equal(videoNote.json.video.available, true)
+  assert.equal(videoNote.json.video.sourceUrl, 'https://example.com/a')
+  assert.deepEqual(videoNote.json.video.segments.map((x) => x.speaker), ['说话人 1', '说话人 2'])
+  assert.equal(videoNote.json.video.keyframes[0].time, 2.5)
+  assert.equal(videoNote.json.video.comparison.platformVsQwen, 0.98)
+  assert.equal(videoNote.json.video.comparison.qwenTokens, 123)
+  const video = await call('GET', '/api/note-video?id=xhs%2Fvideo-test')
+  assert.equal(video.status, 200)
+  assert.equal(video.headers['content-type'], 'video/mp4')
+  const videoRange = await call('GET', '/api/note-video?id=xhs%2Fvideo-test', { headers: { range: 'bytes=2-5' } })
+  assert.equal(videoRange.status, 206)
+  assert.equal(videoRange.headers['content-range'], 'bytes 2-5/15')
+  assert.equal((await call('GET', '/api/note-video?id=github%2Fex__a')).status, 404)
+  const keyframe = await call('GET', '/api/video-keyframe?id=xhs%2Fvideo-test&index=0')
+  assert.equal(keyframe.status, 200)
+  assert.equal(keyframe.headers['content-type'], 'image/jpeg')
+  assert.equal((await call('GET', '/api/video-keyframe?id=xhs%2Fvideo-test&index=99')).status, 404)
   assert.equal((await call('GET', '/api/notes', { headers: { host: 'evil.example' } })).status, 403)
   assert.equal((await call('GET', '/api/notes', { headers: { host: 'evil.example:5174' } })).status, 403)
+})
+
+test('任务与项目、分类独立，并聚合关联研究笔记', async () => {
+  const response = await call('GET', '/api/tasks')
+  assert.equal(response.status, 200)
+  assert.equal(response.json.tasks.length, 1)
+  assert.equal(response.json.tasks[0].id, 'sample-task')
+  assert.equal(response.json.tasks[0].title, '示例短期任务')
+  assert.match(response.json.tasks[0].body, /核对一手来源/)
+  assert.deepEqual(response.json.tasks[0].related, [{ id: 'github/task-example', title: '任务参考' }])
+})
+
+test('任务状态可安全更新，并保留任务的其他字段', async () => {
+  const done = await write('PATCH', '/api/tasks', { id: 'sample-task', status: 'done' })
+  assert.equal(done.status, 200)
+  assert.equal(done.json.task.status, 'done')
+  let listed = await call('GET', '/api/tasks')
+  assert.equal(listed.json.tasks[0].status, 'done')
+  const stored = JSON.parse(fs.readFileSync(path.join(root, '_context', 'tasks.json'), 'utf-8')).tasks[0]
+  assert.equal(stored.title, '示例短期任务')
+  assert.equal(stored.summary, '整理一组公开研究资料')
+  assert.equal((await write('PATCH', '/api/tasks', { id: 'sample-task', status: 'invalid' })).status, 400)
+  assert.equal((await write('PATCH', '/api/tasks', { id: '../escape', status: 'done' })).status, 400)
+  assert.equal((await write('PATCH', '/api/tasks', { id: 'missing', status: 'done' })).status, 404)
+  const active = await write('PATCH', '/api/tasks', { id: 'sample-task', status: 'active' })
+  assert.equal(active.status, 200)
+  listed = await call('GET', '/api/tasks')
+  assert.equal(listed.json.tasks[0].status, 'active')
+})
+
+test('本地视频可以删除，字幕和来源地址仍保留', async () => {
+  const noteId = 'xhs/video-test'
+  const removed = await write('DELETE', `/api/note-video?id=${encodeURIComponent(noteId)}`)
+  assert.equal(removed.status, 200)
+  assert.equal(removed.json.removed, 2)
+  assert.equal(fs.existsSync(path.join(root, '_raw', 'xhs', 'video-test', 'video.mp4')), false)
+  assert.equal(fs.existsSync(path.join(root, '_raw', 'xhs', 'video-test', 'original.mp4')), false)
+  const note = await call('GET', `/api/note?id=${encodeURIComponent(noteId)}`)
+  assert.equal(note.json.video.available, false)
+  assert.equal(note.json.video.sourceUrl, 'https://example.com/a')
+  assert.equal(note.json.video.cues.length, 2)
+  assert.equal((await call('GET', `/api/note-video?id=${encodeURIComponent(noteId)}`)).status, 404)
+})
+
+test('小红书原图支持备注、补图和可恢复移除', async () => {
+  const noteId = 'xhs/note-test'
+  const first = await call('GET', `/api/note?id=${encodeURIComponent(noteId)}`)
+  assert.equal(first.json.images.length, 1)
+  assert.equal(first.json.images[0].note, '')
+
+  const noted = await write('PATCH', '/api/note-image', { id: noteId, name: 'image-01.webp', note: '第二行数字需要人工复核' })
+  assert.equal(noted.status, 200)
+  const afterNote = await call('GET', `/api/note?id=${encodeURIComponent(noteId)}`)
+  assert.equal(afterNote.json.images[0].note, '第二行数字需要人工复核')
+
+  const webp = Buffer.from('RIFF\x00\x00\x00\x00WEBPVP8 ')
+  const added = await write('POST', '/api/note-image', {
+    id: noteId,
+    filename: '补充截图.webp',
+    dataUrl: `data:image/webp;base64,${webp.toString('base64')}`,
+  })
+  assert.equal(added.status, 200)
+  assert.match(added.json.image.name, /^image-added-[a-f0-9-]+\.webp$/)
+  const afterAdd = await call('GET', `/api/note?id=${encodeURIComponent(noteId)}`)
+  assert.equal(afterAdd.json.images.length, 2)
+  assert.ok(afterAdd.json.images.some((x) => x.added && x.name === added.json.image.name))
+
+  assert.equal((await write('POST', '/api/note-image', { id: noteId, filename: 'bad.svg', dataUrl: 'data:image/svg+xml;base64,PHN2Zy8+' })).status, 400)
+  assert.equal((await write('PATCH', '/api/note-image', { id: noteId, name: '../Cookies', note: 'x' })).status, 400)
+
+  const removed = await write('DELETE', `/api/note-image?id=${encodeURIComponent(noteId)}&name=${encodeURIComponent('image-01.webp')}`)
+  assert.equal(removed.status, 200)
+  const afterRemove = await call('GET', `/api/note?id=${encodeURIComponent(noteId)}`)
+  assert.equal(afterRemove.json.images.length, 1)
+  assert.ok(!fs.existsSync(path.join(root, '_raw', 'xhs', 'note-test', 'image-01.webp')))
+  assert.ok(fs.readdirSync(path.join(root, '_raw', 'xhs', 'note-test', '_removed')).some((name) => name.endsWith('-image-01.webp')))
 })
 
 test('写请求的跨站防护', async () => {
@@ -161,6 +300,22 @@ test('写入只改 category 一行；删除后文件与原文件逐字节一致'
   assert.equal(fs.readFileSync(noteFile(), 'utf-8'), NOTE, '删除分类后应回到原文件')
 })
 
+test('笔记可归入短期任务，且只改 task frontmatter', async () => {
+  const before = fs.readFileSync(noteFile(), 'utf-8')
+  const assigned = await write('PATCH', '/api/note', { id: 'github/ex__a', task: 'sample-task' })
+  assert.equal(assigned.status, 200)
+  let after = fs.readFileSync(noteFile(), 'utf-8')
+  assert.ok(after.includes('verdict: learn\ntask: sample-task\n'))
+  assert.equal((await notes()).find((x) => x.id === 'github/ex__a').task, 'sample-task')
+  assert.equal((await write('PATCH', '/api/note', { id: 'github/ex__a', task: 'missing' })).status, 404)
+  assert.equal((await write('PATCH', '/api/note', { id: 'github/ex__a', task: '../escape' })).status, 400)
+  assert.equal((await write('PATCH', '/api/note', { id: 'github/ex__a', category: 'x', task: 'sample-task' })).status, 400)
+  assert.equal((await write('PATCH', '/api/note', { id: 'github/ex__a' })).status, 400)
+  assert.equal((await write('PATCH', '/api/note', { id: 'github/ex__a', task: null })).status, 200)
+  after = fs.readFileSync(noteFile(), 'utf-8')
+  assert.equal(after, before)
+})
+
 test('改名同步到相关笔记；撞名（含大小写、Unicode 同形）被拒绝', async () => {
   await write('POST', '/api/categories', { name: 'Alpha' })
   await write('POST', '/api/categories', { name: 'Beta' })
@@ -228,4 +383,88 @@ test('categories.json 被手工改坏时服务不崩溃', async () => {
     assert.equal(r.status, 200, `坏文件 ${content} 不应让接口报错`)
     for (const c of r.json.categories) assert.ok(/^[a-z]+$/.test(c.color), '颜色必须是白名单值')
   }
+})
+
+test('声纹档案接口只返回元数据，并支持新增、编辑、删除', async () => {
+  const initial = await call('GET', '/api/voiceprints')
+  assert.equal(initial.status, 200)
+  assert.deepEqual(initial.json.profiles, [])
+
+  const created = await write('POST', '/api/voiceprints', {
+    label: '待确认 · 测试说话人', role: '访谈嘉宾', sampleCount: 1,
+    embeddingFile: '_context/voiceprints/test.npz', embeddingLabel: 'SPEAKER_00', embeddingDimensions: 256,
+    note: '测试档案',
+  })
+  assert.equal(created.status, 200)
+  const profile = created.json.profile
+  assert.match(profile.id, /^speaker-/)
+  assert.equal(profile.label, '待确认 · 测试说话人')
+  assert.equal(profile.embeddingDimensions, 256)
+  assert.equal(JSON.stringify(created.json).includes('data:'), false)
+
+  const listed = await call('GET', '/api/voiceprints')
+  assert.equal(listed.status, 200)
+  assert.equal(listed.json.profiles.length, 1)
+  assert.equal(listed.json.profiles[0].embeddingFile, '_context/voiceprints/test.npz')
+  assert.equal(JSON.stringify(listed.json).includes('Float32Array'), false)
+
+  const updated = await write('PATCH', '/api/voiceprints', { id: profile.id, label: '待确认 · 测试说话人', status: 'confirmed', role: '主持人' })
+  assert.equal(updated.status, 200)
+  assert.equal(updated.json.profile.status, 'confirmed')
+  assert.equal(updated.json.profile.label, '测试说话人')
+  assert.equal(updated.json.profile.role, '主持人')
+  assert.equal((await write('PATCH', '/api/voiceprints', { id: profile.id, label: 'x', embeddingDimensions: -1 })).status, 400)
+  assert.equal((await write('POST', '/api/voiceprints', { label: '测试说话人' })).status, 409)
+
+  const duplicate = (await write('POST', '/api/voiceprints', { label: '另一条待合并档案', sampleCount: 2 })).json.profile
+  const merged = await write('POST', '/api/voiceprints/merge', { sourceId: duplicate.id, targetId: profile.id })
+  assert.equal(merged.status, 200)
+  assert.equal(merged.json.profile.sampleCount, 3)
+  assert.ok(merged.json.profile.mergedFrom.includes(duplicate.id))
+  assert.equal((await call('GET', '/api/voiceprints')).json.profiles.length, 1)
+
+  assert.equal((await write('DELETE', `/api/voiceprints?id=${encodeURIComponent(profile.id)}`)).status, 200)
+  assert.equal((await call('GET', '/api/voiceprints')).json.profiles.length, 0)
+})
+
+test('常见词接口支持别名、启用状态，并拒绝非法输入', async () => {
+  assert.deepEqual((await call('GET', '/api/terminology')).json.terms, [])
+  const created = await write('POST', '/api/terminology', {
+    term: 'faster-whisper', aliases: ['fast whisper', 'faster whisper'], note: '测试词', enabled: false,
+  })
+  assert.equal(created.status, 200)
+  const term = created.json.term
+  assert.match(term.id, /^term-/)
+  assert.deepEqual(term.aliases, ['fast whisper', 'faster whisper'])
+  assert.equal(term.status, 'candidate')
+
+  const updated = await write('PATCH', '/api/terminology', { id: term.id, status: 'confirmed', enabled: true })
+  assert.equal(updated.status, 200)
+  assert.equal(updated.json.term.enabled, true)
+  assert.equal(updated.json.term.status, 'confirmed')
+  assert.equal((await write('POST', '/api/terminology', { term: 'faster-whisper' })).status, 409)
+  assert.equal((await write('POST', '/api/terminology', { term: 'x', aliases: ['a\n b'] })).status, 400)
+  assert.equal((await write('PATCH', '/api/terminology', { id: '../bad', term: 'x' })).status, 400)
+  assert.equal((await write('DELETE', `/api/terminology?id=${encodeURIComponent(term.id)}`)).status, 200)
+  assert.deepEqual((await call('GET', '/api/terminology')).json.terms, [])
+})
+
+test('已登记的音频片段可播放，未登记或越界文件不可读取', async () => {
+  const clipsDir = path.join(root, '_context', 'audio-clips')
+  fs.mkdirSync(clipsDir, { recursive: true })
+  fs.writeFileSync(path.join(clipsDir, 'test.mp3'), Buffer.from('fake-mp3'))
+  fs.writeFileSync(path.join(root, '_context', 'voiceprints.json'), JSON.stringify({
+    version: 1,
+    profiles: [{ id: 'speaker-test', label: '测试', clips: [{ id: 'clip-1', file: '_context/audio-clips/test.mp3', start: 0, end: 1, text: '测试', label: '试听' }] }],
+  }))
+  const ok = await call('GET', '/api/audio-clip?kind=voiceprint&id=speaker-test&clip=clip-1')
+  assert.equal(ok.status, 200)
+  assert.equal(ok.headers['content-type'], 'audio/mpeg')
+  assert.equal(Number(ok.headers['content-length']), 8)
+  assert.equal((await call('GET', '/api/audio-clip?kind=voiceprint&id=speaker-test&clip=nope')).status, 404)
+  fs.writeFileSync(path.join(root, '_context', 'voiceprints.json'), JSON.stringify({
+    version: 1,
+    profiles: [{ id: 'speaker-test', label: '测试', clips: [{ id: 'clip-2', file: '../projects.md', start: 0, end: 1 }] }],
+  }))
+  assert.equal((await call('GET', '/api/audio-clip?kind=voiceprint&id=speaker-test&clip=clip-2')).status, 404)
 })

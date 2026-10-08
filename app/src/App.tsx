@@ -1,12 +1,16 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
-import { BookMarked, BookOpen, FolderKanban } from 'lucide-react'
+import { BookMarked, BookOpen, FolderKanban, ListTodo, Mic2 } from 'lucide-react'
 import LibraryPage from './pages/LibraryPage'
 import DetailPage from './pages/DetailPage'
 import ProjectsPage from './pages/ProjectsPage'
+import ProfilesPage from './pages/ProfilesPage'
+import TasksPage from './pages/TasksPage'
 
 const nav = [
   { to: '/', label: '研究库', icon: BookOpen, end: true },
+  { to: '/tasks', label: '任务', icon: ListTodo, end: false },
   { to: '/projects', label: '项目画像', icon: FolderKanban, end: false },
+  { to: '/profiles', label: '声纹与词库', icon: Mic2, end: false },
 ]
 
 export default function App() {
@@ -50,6 +54,8 @@ export default function App() {
           <Route path="/" element={<LibraryPage />} />
           <Route path="/note/:source/:name" element={<DetailPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/profiles" element={<ProfilesPage />} />
         </Routes>
       </main>
     </div>

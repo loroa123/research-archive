@@ -1,5 +1,5 @@
 ---
-source: github          # github | arxiv | youtube | xhs | wechat | web
+source: github          # github | arxiv | youtube | self-upload | xhs | wechat | web
 url: 
 title: 
 author: 
@@ -35,3 +35,7 @@ category:               # 自定义分类，取自 _context/categories.json；�
 ## 证据与来源
 
 <!-- 读了哪些文件/页面，哪些没读到、哪些没验证。抓不到的部分在这里明说，不要编。 -->
+
+## 追问记录
+
+<!-- 初次归档时留空。后续对本项目的细节追问按「### YYYY-MM-DD · 用户问题」追加。 -->

@@ -12,6 +12,7 @@ export interface NoteMeta {
   status: string
   verdict: string
   category: string
+  task: string
   summary: string
   mtime: number
 }
@@ -21,6 +22,36 @@ export interface Project {
   title: string
   fields: Record<string, string>
   related: { id: string; title: string }[]
+}
+
+export interface ResearchTask {
+  id: string
+  title: string
+  status: string
+  created: string
+  updated: string
+  summary: string
+  body: string
+  related: { id: string; title: string }[]
+}
+
+export const COMPLETED_TASK_STATUSES = new Set(['done', 'archived'])
+export const SHOW_COMPLETED_TASKS_KEY = 'research-archive-show-completed-tasks'
+
+export function initialShowCompletedTasks() {
+  try {
+    return localStorage.getItem(SHOW_COMPLETED_TASKS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function rememberShowCompletedTasks(show: boolean) {
+  try {
+    localStorage.setItem(SHOW_COMPLETED_TASKS_KEY, show ? '1' : '0')
+  } catch {
+    // localStorage 被禁用时仍保留本次会话的选择。
+  }
 }
 
 export interface Category {
@@ -39,6 +70,109 @@ export interface CategoriesResp {
 export interface NoteDetail {
   meta?: NoteMeta
   body: string
+  meeting?: MeetingTranscript | null
+  video?: NoteVideo | null
+  images: { index: number; name: string; note: string; added: boolean }[]
+}
+
+export interface VideoCue {
+  start: number
+  end: number
+  text: string
+}
+
+export interface VideoSegment extends VideoCue {
+  speaker: string
+  speakerId: string
+}
+
+export interface VideoKeyframe {
+  index: number
+  name: string
+  time: number
+  reason: string
+}
+
+export interface VideoComparison {
+  platformVsLocal: number | null
+  platformVsQwen: number | null
+  localVsQwen: number | null
+  localRuntime: number | null
+  qwenRuntime: number | null
+  qwenTokens: number | null
+  correctionCount: number
+}
+
+export interface NoteVideo {
+  duration: number
+  cueCount: number
+  available: boolean
+  sourceUrl: string
+  sourceLabel: string
+  cues: VideoCue[]
+  segments: VideoSegment[]
+  keyframes: VideoKeyframe[]
+  sceneThreshold: number | null
+  maxGapSeconds: number | null
+  comparison: VideoComparison | null
+}
+
+export interface MeetingTurn {
+  start: number
+  end: number
+  speaker: string
+  speakerId: string
+  text: string
+}
+
+export interface MeetingTranscript {
+  duration: number
+  speakers: { id: string; name: string }[]
+  turns: MeetingTurn[]
+}
+
+export type VoiceprintStatus = 'unconfirmed' | 'confirmed' | 'disabled'
+export interface AudioClip {
+  id: string
+  file: string
+  start: number
+  end: number
+  text: string
+  label: string
+}
+export interface VoiceprintEmbeddingRef {
+  file: string
+  label: string
+  dimensions: number | null
+}
+export interface VoiceprintProfile {
+  id: string
+  label: string
+  role: string
+  status: VoiceprintStatus
+  sampleCount: number
+  embeddingFile: string
+  embeddingLabel: string
+  embeddingDimensions: number | null
+  embeddingRefs: VoiceprintEmbeddingRef[]
+  clips: AudioClip[]
+  mergedFrom: string[]
+  note: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type TermStatus = 'candidate' | 'confirmed' | 'disabled'
+export interface TerminologyItem {
+  id: string
+  term: string
+  aliases: string[]
+  status: TermStatus
+  enabled: boolean
+  clips: AudioClip[]
+  note: string
+  createdAt: string
+  updatedAt: string
 }
 
 /** 极简数据获取：加载中 / 出错 / 数据 */
@@ -81,6 +215,7 @@ export const SOURCE_LABEL: Record<string, string> = {
   github: 'GitHub',
   arxiv: '论文',
   youtube: '视频',
+  'self-upload': '自上传',
   xhs: '小红书',
   wechat: '公众号',
   web: '网页',
@@ -107,17 +242,6 @@ export function tagClass(tag: string) {
   let h = 0
   for (const c of tag) h = (h * 31 + c.charCodeAt(0)) >>> 0
   return TAG_PALETTE[h % TAG_PALETTE.length]
-}
-
-export function ago(dateStr: string) {
-  if (!dateStr) return ''
-  const t = Date.parse(dateStr)
-  if (Number.isNaN(t)) return dateStr
-  const days = Math.floor((Date.now() - t) / 86400000)
-  if (days <= 0) return '今天'
-  if (days < 30) return `${days} 天前`
-  if (days < 365) return `${Math.floor(days / 30)} 个月前`
-  return `${Math.floor(days / 365)} 年前`
 }
 
 /** 分类颜色：chip 是标签样式，dot 是色点。类名必须写全，Tailwind 才会生成 */
